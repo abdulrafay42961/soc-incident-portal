@@ -131,6 +131,15 @@
   .btn-primary{ background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#04121a; font-weight:700; border-radius:9px; padding:12px 22px; transition:.15s ease; }
   .btn-primary:hover{ filter:brightness(1.08); box-shadow:0 0 24px rgba(34,211,238,0.3); }
   .btn-primary:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
+  .btn-secondary{
+    background:transparent; color:var(--accent); font-weight:600; font-size:12.5px;
+    border:1px solid var(--line); border-radius:9px; padding:10px 14px;
+    cursor:pointer; transition:.15s ease; display:inline-block; text-decoration:none;
+  }
+  .btn-secondary:hover{ border-color:var(--accent); background:rgba(34,211,238,0.06); }
+  .btn-secondary:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn-secondary.hidden{ display:none; }
+  .pdf-frame{ width:100%; height:360px; border:1px solid var(--line); border-radius:9px; background:#fff; }
   .btn-ghost{ background:var(--bg-2); border:1px solid var(--line); color:var(--text-hi); font-weight:600; border-radius:9px; padding:9px 16px; font-size:13px; transition:.15s; }
   .btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
 
@@ -434,6 +443,19 @@
             <button type="submit" id="submit-btn" class="btn-primary w-full">Submit incident &amp; notify</button>
             <p class="text-[11px] mt-3" style="color:var(--text-low);">Submitting sends a structured alert email immediately to the recipient above.</p>
           </div>
+
+          <div class="card p-5">
+            <div class="eyebrow mb-3">Incident Report PDF</div>
+            <p class="text-[12px] mb-3" style="color:var(--text-mid);">Generate a plain, printable PDF version of this report from what's currently filled in above.</p>
+            <div class="flex gap-2">
+              <button type="button" id="pdf-preview-btn" class="btn-secondary flex-1" onclick="previewIncidentPdf()">Generate preview</button>
+              <a id="pdf-download-btn" class="btn-secondary flex-1 text-center hidden" download="incident-report.pdf">Download PDF</a>
+            </div>
+            <div id="pdf-preview-wrap" class="mt-3 hidden">
+              <iframe id="pdf-preview-frame" class="pdf-frame" title="Incident PDF preview"></iframe>
+            </div>
+            <p id="pdf-preview-error" class="text-[11px] mt-2 hidden" style="color:var(--crit);"></p>
+          </div>
         </div>
       </form>
 
@@ -444,7 +466,7 @@
         </div>
         <div class="overflow-x-auto">
           <table class="data-table">
-            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Affected Asset</th><th>Recipient</th><th>Email Status</th><th>Logged At</th></tr></thead>
+            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Affected Asset</th><th>Recipient</th><th>Email Status</th><th>Logged At</th><th>PDF</th></tr></thead>
             <tbody id="incidents-table-body"></tbody>
           </table>
         </div>
@@ -652,6 +674,42 @@
     }
   });
 
+  let pdfPreviewUrl = null;
+
+  async function previewIncidentPdf(){
+    const btn = document.getElementById('pdf-preview-btn');
+    const errEl = document.getElementById('pdf-preview-error');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    try {
+      const formData = new FormData(form);
+      const res = await fetch('/api/incidents/preview-pdf', { method: 'POST', body: formData });
+      if(!res.ok){
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data.errors || ['Could not generate PDF preview.']).join(' '));
+      }
+      const blob = await res.blob();
+      if(pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+      pdfPreviewUrl = URL.createObjectURL(blob);
+
+      document.getElementById('pdf-preview-frame').src = pdfPreviewUrl;
+      document.getElementById('pdf-preview-wrap').classList.remove('hidden');
+
+      const downloadBtn = document.getElementById('pdf-download-btn');
+      downloadBtn.href = pdfPreviewUrl;
+      const idText = document.getElementById('prev-id').textContent;
+      downloadBtn.download = (idText && idText !== 'pending') ? `${idText}.pdf` : 'incident-report-draft.pdf';
+      downloadBtn.classList.remove('hidden');
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not generate PDF preview.';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate preview';
+    }
+  }
+
   /* ---------------------------- Data loaders ---------------------------- */
   let charts = {};
 
@@ -773,6 +831,7 @@
         <td>${inc.recipient_email}<br><span style="color:var(--text-low); font-size:11px;">${titleCase(inc.recipient_role)}</span></td>
         <td>${statusBadge(inc.email_status)}</td>
         <td class="mono" style="color:var(--text-low);">${fmtDate(inc.created_at)}</td>
+        <td><a href="/api/incidents/${inc.incident_id}/pdf?download=1" style="color:var(--accent); font-weight:600;">Download</a></td>
       </tr>`;
     });
     loadNavBadge();
