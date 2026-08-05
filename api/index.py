@@ -28,12 +28,20 @@ import re
 import random
 import smtplib
 import mimetypes
+from io import BytesIO
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file, abort
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.colors import HexColor
 
 # --------------------------------------------------------------------------- #
 # App configuration
@@ -133,6 +141,14 @@ _load_state()
 # Helpers
 # --------------------------------------------------------------------------- #
 
+def format_role(role: str) -> str:
+    """Title-case a role slug while keeping known acronyms fully uppercase."""
+    label = (role or "").replace("_", " ").title()
+    for acronym in ("Soc", "Hr", "Ciso"):
+        label = re.sub(rf"\b{acronym}\b", acronym.upper(), label)
+    return label
+
+
 def generate_incident_id() -> str:
     """Generate a unique incident ID, e.g. INC-2026-X892."""
     year = datetime.now().year
@@ -204,17 +220,102 @@ def build_email_html(incident: dict) -> str:
         "{{ATTACK_TYPE}}": incident["attack_type"].replace("_", " ").title(),
         "{{TIMESTAMP}}": incident["timestamp"],
         "{{REPORTER_NAME}}": incident["reporter_name"],
-        "{{REPORTER_ROLE}}": incident["reporter_role"].replace("_", " ").title(),
+        "{{REPORTER_ROLE}}": format_role(incident["reporter_role"]),
         "{{COMPANY_NAME}}": incident["company_name"],
         "{{SENDER_EMAIL}}": incident["sender_email"],
         "{{AFFECTED_ASSETS}}": incident["affected_assets"],
         "{{DESCRIPTION}}": incident["description"].replace("\n", "<br>"),
-        "{{RECIPIENT_ROLE}}": incident["recipient_role"].replace("_", " ").title(),
+        "{{RECIPIENT_ROLE}}": format_role(incident["recipient_role"]),
         "{{GENERATED_AT}}": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
     return template
+
+
+def build_incident_pdf(incident: dict) -> bytes:
+    """
+    Render a plain, simple (white background / black text) PDF version of an
+    incident report — used both for the live "Preview" in the form and for
+    downloading a submitted incident later. `incident` may be a partial,
+    not-yet-submitted draft (from the preview endpoint) or a fully saved
+    record (from the history log) — every lookup below has a safe fallback
+    so both cases render cleanly.
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter,
+        topMargin=0.85 * inch, bottomMargin=0.85 * inch,
+        leftMargin=0.9 * inch, rightMargin=0.9 * inch,
+    )
+
+    black = HexColor("#111111")
+    gray = HexColor("#5a5a5a")
+
+    title_style = ParagraphStyle(
+        "ReportTitle", fontName="Helvetica", fontSize=22, leading=26,
+        textColor=black, spaceAfter=4,
+    )
+    meta_style = ParagraphStyle(
+        "ReportMeta", fontName="Helvetica", fontSize=10, leading=14,
+        textColor=gray, spaceAfter=18,
+    )
+    label_style = ParagraphStyle(
+        "Line", fontName="Helvetica", fontSize=11.5, leading=20,
+        textColor=black, alignment=TA_LEFT,
+    )
+    section_gap = Spacer(1, 14)
+    line_gap = Spacer(1, 4)
+
+    def line(label: str, value: str):
+        return Paragraph(f"<b>{label}:</b> {value or '—'}", label_style)
+
+    severity = incident.get("severity", "").upper() or "—"
+    attack_type = incident.get("attack_type", "").replace("_", " ").title() or "—"
+    reporter_role = format_role(incident.get("reporter_role", ""))
+    recipient_role = format_role(incident.get("recipient_role", ""))
+    status = incident.get("email_status", "draft").replace("_", " ").title()
+    generated_at = datetime.now().strftime("%m/%d/%Y, %I:%M:%S %p")
+
+    story = [
+        Paragraph("SOC Incident Report", title_style),
+        Paragraph(
+            f"Incident ID: {incident.get('incident_id', 'DRAFT — not yet submitted')}",
+            meta_style,
+        ),
+
+        # Reporter identity first, per request — name and role at the top.
+        line("Reporter", f"{incident.get('reporter_name', '—')} ({reporter_role or '—'})"),
+        line_gap,
+        line("Company", incident.get("company_name", "—")),
+        line_gap,
+        line("Sender Email", incident.get("sender_email", "—")),
+        section_gap,
+
+        line("Incident Type", attack_type),
+        line_gap,
+        line("Severity", severity),
+        line_gap,
+        line("Affected Assets", incident.get("affected_assets", "—")),
+        line_gap,
+        line("Timestamp Detected", incident.get("timestamp", "—")),
+        section_gap,
+
+        Paragraph("<b>Description:</b>", label_style),
+        line_gap,
+        Paragraph((incident.get("description", "—") or "—").replace("\n", "<br/>"), label_style),
+        section_gap,
+
+        line("Routed To", f"{recipient_role or '—'} ({incident.get('recipient_email', '—')})"),
+        section_gap,
+
+        line("Status", status),
+        line_gap,
+        line("Generated", generated_at),
+    ]
+
+    doc.build(story)
+    return buffer.getvalue()
 
 
 def send_alert_email(incident: dict, attachment_path: str | None) -> None:
@@ -354,6 +455,53 @@ def create_incident():
 def list_incidents():
     """Return the full incident history, most recent first."""
     return jsonify({"incidents": INCIDENT_LOG})
+
+
+@app.route("/api/incidents/preview-pdf", methods=["POST"])
+def preview_incident_pdf():
+    """
+    Render whatever is currently typed into the incident form as a PDF —
+    used for the live "Preview" panel. Does NOT save the incident and does
+    NOT send an email; it only reads the submitted field values.
+    """
+    data = request.form.to_dict()
+    draft = {
+        "reporter_name": data.get("reporter_name", "").strip(),
+        "reporter_role": data.get("reporter_role", "").strip().lower(),
+        "company_name": data.get("company_name", "").strip(),
+        "sender_email": data.get("sender_email", "").strip(),
+        "recipient_role": data.get("recipient_role", "").strip().lower(),
+        "recipient_email": data.get("recipient_email", "").strip(),
+        "attack_type": data.get("attack_type", "").strip().lower(),
+        "severity": data.get("severity", "").strip().lower(),
+        "timestamp": data.get("timestamp", "").strip(),
+        "affected_assets": data.get("affected_assets", "").strip(),
+        "description": data.get("description", "").strip(),
+    }
+    pdf_bytes = build_incident_pdf(draft)
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="incident-preview.pdf",
+    )
+
+
+@app.route("/api/incidents/<incident_id>/pdf", methods=["GET"])
+def download_incident_pdf(incident_id):
+    """Generate and return the PDF for an already-submitted incident."""
+    incident = next((i for i in INCIDENT_LOG if i["incident_id"] == incident_id), None)
+    if not incident:
+        abort(404, description=f"Incident {incident_id} not found.")
+
+    pdf_bytes = build_incident_pdf(incident)
+    download = request.args.get("download") == "1"
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=download,
+        download_name=f"{incident_id}.pdf",
+    )
 
 
 @app.route("/api/emails", methods=["GET"])
