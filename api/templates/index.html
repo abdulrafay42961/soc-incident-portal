@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOC Incident Notification &amp; Alerting Portal</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#070a12;
+    --bg-1:#0d1220;
+    --bg-2:#131a2c;
+    --glass:rgba(19,26,44,0.6);
+    --line:#212c46;
+    --line-soft:#1a2338;
+    --text-hi:#eef1f8;
+    --text-mid:#93a0bd;
+    --text-low:#5a6688;
+    --accent:#22d3ee;
+    --accent-2:#6366f1;
+    --crit:#f43f5e;
+    --high:#fb923c;
+    --med:#facc15;
+    --low:#34d399;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg-0);
+    font-family:'Inter',sans-serif;
+    color:var(--text-hi);
+    overflow-x:hidden;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .bg-glow{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(700px 400px at 8% 0%, rgba(34,211,238,0.10), transparent 60%),
+      radial-gradient(600px 380px at 95% 15%, rgba(99,102,241,0.10), transparent 55%),
+      radial-gradient(500px 300px at 50% 100%, rgba(244,63,94,0.05), transparent 60%);
+  }
+  .app-shell{ position:relative; z-index:1; display:flex; min-height:100vh; }
+
+  /* Sidebar */
+  .sidebar{
+    width:220px; flex-shrink:0;
+    background:linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    border-right:1px solid var(--line-soft);
+    display:flex; flex-direction:column;
+    padding:20px 14px;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:6px 8px 22px 8px; }
+  .brand-badge{
+    width:34px; height:34px; border-radius:9px; flex-shrink:0;
+    background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 18px rgba(34,211,238,0.35);
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:11px;
+    padding:10px 12px; border-radius:10px;
+    color:var(--text-mid); font-size:14px; font-weight:600;
+    cursor:pointer; margin-bottom:4px;
+    transition:.15s ease;
+    border:1px solid transparent;
+  }
+  .nav-item:hover{ background:var(--bg-2); color:var(--text-hi); }
+  .nav-item.active{
+    background:linear-gradient(90deg, rgba(34,211,238,0.16), rgba(99,102,241,0.10));
+    border-color:rgba(34,211,238,0.3);
+    color:#fff;
+    box-shadow:0 0 20px rgba(34,211,238,0.08) inset;
+  }
+  .nav-item svg{ flex-shrink:0; }
+  .nav-badge{
+    margin-left:auto; font-size:10px; font-weight:700; padding:1px 7px;
+    border-radius:100px; background:rgba(244,63,94,0.15); color:var(--crit);
+    border:1px solid rgba(244,63,94,0.3);
+  }
+  .sidebar-foot{ margin-top:auto; padding-top:14px; border-top:1px solid var(--line-soft); }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--low); box-shadow:0 0 6px var(--low); display:inline-block; }
+
+  /* Main */
+  .content{ flex:1; min-width:0; }
+  .topbar{
+    position:sticky; top:0; z-index:5;
+    background:rgba(7,10,18,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line-soft);
+    padding:16px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .view{ display:none; padding:24px 28px 48px 28px; }
+  .view.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .card{
+    background:var(--glass);
+    border:1px solid var(--line);
+    border-radius:14px;
+    backdrop-filter:blur(6px);
+  }
+  .stat-card{ padding:18px 18px; }
+  .stat-value{ font-size:26px; font-weight:800; letter-spacing:-.02em; }
+  .stat-label{ font-size:12px; color:var(--text-mid); margin-top:2px; }
+  .eyebrow{
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent); font-weight:700;
+  }
+
+  .field-label{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-low); font-weight:600; }
+  .field{
+    background:var(--bg-2); border:1px solid var(--line); color:var(--text-hi);
+    border-radius:8px; padding:10px 12px; font-size:14px; width:100%;
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .field:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(34,211,238,0.12); }
+  .field::placeholder{ color:var(--text-low); }
+  select.field{ appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235c6884'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; }
+
+  .sev-btn{ border:1px solid var(--line); background:var(--bg-2); border-radius:8px; padding:9px 6px; font-size:12px; font-weight:700; letter-spacing:.04em; text-align:center; cursor:pointer; color:var(--text-mid); transition:.15s ease; }
+  .sev-btn.active-critical{ background:rgba(244,63,94,0.12); border-color:var(--crit); color:var(--crit); }
+  .sev-btn.active-high{ background:rgba(251,146,60,0.12); border-color:var(--high); color:var(--high); }
+  .sev-btn.active-medium{ background:rgba(250,204,21,0.12); border-color:var(--med); color:var(--med); }
+  .sev-btn.active-low{ background:rgba(52,211,153,0.12); border-color:var(--low); color:var(--low); }
+
+  .btn-primary{ background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#04121a; font-weight:700; border-radius:9px; padding:12px 22px; transition:.15s ease; }
+  .btn-primary:hover{ filter:brightness(1.08); box-shadow:0 0 24px rgba(34,211,238,0.3); }
+  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
+  .btn-ghost{ background:var(--bg-2); border:1px solid var(--line); color:var(--text-hi); font-weight:600; border-radius:9px; padding:9px 16px; font-size:13px; transition:.15s; }
+  .btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
+
+  .file-drop{ border:1.5px dashed var(--line); border-radius:8px; background:var(--bg-2); transition:.15s ease; }
+  .file-drop.drag{ border-color:var(--accent); background:rgba(34,211,238,0.05); }
+
+  table.data-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.data-table th{ text-align:left; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-low); font-weight:700; padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table.data-table td{ padding:11px 12px; border-bottom:1px solid var(--line-soft); color:var(--text-hi); vertical-align:middle; }
+  table.data-table tr:hover td{ background:rgba(255,255,255,0.015); }
+  .badge{ display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.03em; padding:3px 9px; border-radius:100px; border:1px solid; }
+  .badge-critical{ color:var(--crit); background:rgba(244,63,94,0.1); border-color:rgba(244,63,94,0.35); }
+  .badge-high{ color:var(--high); background:rgba(251,146,60,0.1); border-color:rgba(251,146,60,0.35); }
+  .badge-medium{ color:var(--med); background:rgba(250,204,21,0.1); border-color:rgba(250,204,21,0.35); }
+  .badge-low{ color:var(--low); background:rgba(52,211,153,0.1); border-color:rgba(52,211,153,0.35); }
+  .badge-sent{ color:var(--low); background:rgba(52,211,153,0.1); border-color:rgba(52,211,153,0.35); }
+  .badge-failed{ color:var(--crit); background:rgba(244,63,94,0.1); border-color:rgba(244,63,94,0.35); }
+
+  .empty-state{ text-align:center; padding:48px 20px; color:var(--text-mid); }
+
+  .toast{
+    position:fixed; top:20px; right:20px; z-index:50; min-width:320px; max-width:420px;
+    border-radius:10px; padding:14px 16px; border:1px solid var(--line); background:var(--bg-1);
+    box-shadow:0 10px 40px rgba(0,0,0,.5); transform:translateX(480px); opacity:0;
+    transition:transform .3s ease, opacity .3s ease;
+  }
+  .toast.show{ transform:translateX(0); opacity:1; }
+  .divider{ height:1px; background:var(--line-soft); }
+  ::selection{ background:rgba(34,211,238,.3); }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:#1c2440; border-radius:6px; }
+  .timeline-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+
+  /* Login modal */
+  .login-overlay{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(4,6,12,0.72); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .login-overlay.show{ display:flex; }
+  .login-card{
+    width:100%; max-width:380px;
+    background:linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    border:1px solid var(--line); border-radius:16px;
+    padding:28px 26px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.55);
+  }
+  #profile-box:hover{ border-color:var(--accent) !important; }
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="app-shell">
+
+  <!-- ============================= SIDEBAR ============================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-badge">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2.4"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+      </div>
+      <div>
+        <div class="text-[13px] font-extrabold tracking-tight leading-tight">SOC PORTAL</div>
+        <div class="text-[10px] mono" style="color:var(--text-low);">alerting &amp; response</div>
+      </div>
+    </div>
+
+    <nav>
+      <div class="nav-item active" data-view="dashboard">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </div>
+      <div class="nav-item" data-view="incidents">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L2.6 17a1.8 1.8 0 0 0 1.6 2.7h15.6a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z"/><path d="M12 9v4M12 16.5h.01"/></svg>
+        Incidents
+        <span class="nav-badge" id="nav-incident-count">0</span>
+      </div>
+      <div class="nav-item" data-view="email-center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></svg>
+        Email Center
+      </div>
+      <div class="nav-item" data-view="reports">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2.5h9l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14.5 2.5V7h4.5M8 12h8M8 15.5h8M8 8.5h3"/></svg>
+        Reports
+      </div>
+      <div class="nav-item" data-view="audit-logs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.5 12a8.5 8.5 0 1 0 2.9-6.4"/><path d="M3.5 4.5v4h4"/><path d="M12 7.5V12l3 2"/></svg>
+        Audit Logs
+      </div>
+      <div class="nav-item" data-view="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .35 1.9l.05.05a2 2 0 1 1-2.9 2.9l-.05-.05a1.7 1.7 0 0 0-1.9-.35 1.7 1.7 0 0 0-1 1.55V20a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.9.35l-.05.05a2 2 0 1 1-2.9-2.9l.05-.05a1.7 1.7 0 0 0 .35-1.9 1.7 1.7 0 0 0-1.55-1H4a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.35-1.9l-.05-.05a2 2 0 1 1 2.9-2.9l.05.05a1.7 1.7 0 0 0 1.9.35H10a1.7 1.7 0 0 0 1-1.55V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.9-.35l.05-.05a2 2 0 1 1 2.9 2.9l-.05.05a1.7 1.7 0 0 0-.35 1.9V10a1.7 1.7 0 0 0 1.55 1H20a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.5z"/></svg>
+        Settings
+      </div>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-2 text-[11px] mono mb-3" style="color:var(--text-low);">
+        <span class="status-dot"></span> QUEUE ONLINE
+      </div>
+      <div class="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer" id="profile-box" style="background:var(--bg-2); border:1px solid var(--line-soft);" title="Click to edit your name and role">
+        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold" style="background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#04121a;" id="profile-initials">—</div>
+        <div class="text-[11px] leading-tight">
+          <div class="font-semibold" id="profile-name">Not signed in</div>
+          <div style="color:var(--text-low);" class="mono" id="profile-role">Click to set your name</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================= LOGIN MODAL ============================= -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="brand-badge mb-4" style="width:40px; height:40px;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2.4"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+      </div>
+      <div class="text-lg font-extrabold mb-1">Welcome to SOC Portal</div>
+      <p class="text-sm mb-5" style="color:var(--text-mid);">Tell us who you are so incidents you log are correctly attributed.</p>
+      <div class="mb-4">
+        <label class="field-label">Your name</label>
+        <input id="login-name" class="field mt-2" placeholder="e.g. John Carter" autocomplete="off" />
+      </div>
+      <div class="mb-5">
+        <label class="field-label">Your role</label>
+        <select id="login-role" class="field mt-2">
+          <option value="">Select your role</option>
+          <option value="SOC Analyst">SOC Analyst</option>
+          <option value="Team Lead">Team Lead</option>
+          <option value="HR">HR</option>
+          <option value="CISO">CISO</option>
+          <option value="User">User</option>
+        </select>
+      </div>
+      <button class="btn-primary w-full" id="login-continue-btn" onclick="saveIdentity()">Continue</button>
+      <div id="login-error" class="text-[12px] mt-3 hidden" style="color:var(--crit);">Please enter your name and select a role.</div>
+    </div>
+  </div>
+
+  <!-- ============================= MAIN ============================= -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <div class="text-[11px] eyebrow" id="topbar-eyebrow">// Overview</div>
+        <div class="text-lg font-extrabold tracking-tight" id="topbar-title">Dashboard</div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="text-[11px] mono text-right" style="color:var(--text-low);">
+          <div id="clock">--:--:--</div>
+          <div id="clock-date">-- --- ----</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- DASHBOARD VIEW ---------------- -->
+    <section class="view active" id="view-dashboard">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div class="card stat-card">
+          <div class="stat-label">Total Incidents</div>
+          <div class="stat-value" id="stat-total">0</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Critical Open</div>
+          <div class="stat-value" style="color:var(--crit);" id="stat-critical">0</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Emails Dispatched</div>
+          <div class="stat-value" style="color:var(--accent);" id="stat-emails">0</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-label">Delivery Success Rate</div>
+          <div class="stat-value" style="color:var(--low);" id="stat-success">100%</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6">
+        <div class="card p-5 xl:col-span-1">
+          <div class="eyebrow mb-1">Severity Breakdown</div>
+          <div style="height:210px;"><canvas id="chart-severity"></canvas></div>
+        </div>
+        <div class="card p-5 xl:col-span-1">
+          <div class="eyebrow mb-1">Attack Type Distribution</div>
+          <div style="height:210px;"><canvas id="chart-attack"></canvas></div>
+        </div>
+        <div class="card p-5 xl:col-span-1">
+          <div class="eyebrow mb-1">Incidents Over Time</div>
+          <div style="height:210px;"><canvas id="chart-timeline"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="eyebrow">Recent Incidents</div>
+          <span class="text-[12px] cursor-pointer" style="color:var(--accent);" onclick="navigate('incidents')">View all →</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Recipient</th><th>Email</th></tr></thead>
+            <tbody id="recent-incidents-body"></tbody>
+          </table>
+        </div>
+        <div id="dashboard-empty" class="empty-state hidden">No incidents logged yet. Submit your first report from the Incidents tab.</div>
+      </div>
+    </section>
+
+    <!-- ---------------- INCIDENTS VIEW ---------------- -->
+    <section class="view" id="view-incidents">
+      <div class="flex items-center justify-between mb-5">
+        <p class="text-sm" style="color:var(--text-mid);">Log a new incident, or review everything reported so far.</p>
+        <button class="btn-ghost" id="toggle-form-btn" onclick="toggleIncidentForm()">− Hide form</button>
+      </div>
+
+      <form id="incident-form" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8" style="display:grid;">
+        <div class="lg:col-span-2 space-y-6">
+          <div class="card p-5">
+            <div class="eyebrow mb-4">01 · Reporter</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label class="field-label">Reporter name</label><input required name="reporter_name" class="field mt-2" placeholder="Jordan Ellis" /></div>
+              <div><label class="field-label">Role</label>
+                <select required name="reporter_role" class="field mt-2">
+                  <option value="">Select role</option>
+                  <option value="soc_analyst">SOC Analyst</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+              <div><label class="field-label">Company name</label><input required name="company_name" class="field mt-2" placeholder="Acme Corp" /></div>
+              <div><label class="field-label">Sender email</label><input required type="email" name="sender_email" class="field mt-2" placeholder="jordan.ellis@acme.com" /></div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="eyebrow mb-4">02 · Recipient</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label class="field-label">Recipient role</label>
+                <select required name="recipient_role" class="field mt-2">
+                  <option value="">Select role</option>
+                  <option value="team_lead">Team Lead</option>
+                  <option value="hr">HR</option>
+                  <option value="ciso">CISO</option>
+                </select>
+              </div>
+              <div><label class="field-label">Recipient email</label><input required type="email" name="recipient_email" class="field mt-2" placeholder="team.lead@acme.com" /></div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="eyebrow mb-4">03 · Incident metadata</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div><label class="field-label">Attack type</label>
+                <select required name="attack_type" class="field mt-2">
+                  <option value="">Select attack type</option>
+                  <option value="phishing">Phishing</option>
+                  <option value="ransomware">Ransomware</option>
+                  <option value="unauthorized_access">Unauthorized Access</option>
+                  <option value="malware_execution">Malware Execution</option>
+                  <option value="ddos">DDoS</option>
+                  <option value="data_exfiltration">Data Exfiltration</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div><label class="field-label">Timestamp detected</label><input required type="datetime-local" name="timestamp" id="timestamp" class="field mt-2" /></div>
+              <div class="sm:col-span-2"><label class="field-label">Affected assets</label><input required name="affected_assets" class="field mt-2" placeholder="Hostname: WKS-0231 · IP: 10.20.4.15 · User: j.ellis" /></div>
+            </div>
+            <div class="mt-4">
+              <label class="field-label">Severity level</label>
+              <input type="hidden" name="severity" id="severity-input" required />
+              <div class="grid grid-cols-4 gap-2 mt-2">
+                <div class="sev-btn" data-sev="critical" onclick="selectSeverity('critical')">CRITICAL</div>
+                <div class="sev-btn" data-sev="high" onclick="selectSeverity('high')">HIGH</div>
+                <div class="sev-btn" data-sev="medium" onclick="selectSeverity('medium')">MEDIUM</div>
+                <div class="sev-btn" data-sev="low" onclick="selectSeverity('low')">LOW</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card p-5">
+            <div class="eyebrow mb-4">04 · Description &amp; actions</div>
+            <label class="field-label">Incident description, containment taken, and recommendations</label>
+            <textarea required name="description" rows="6" class="field mt-2" placeholder="What happened, how it was detected, containment steps already performed, and recommended next actions..."></textarea>
+          </div>
+        </div>
+
+        <div class="space-y-6">
+          <div class="card p-5">
+            <div class="eyebrow mb-4">05 · Evidence</div>
+            <label class="field-label">Attachment (logs, screenshot, etc.)</label>
+            <div id="file-drop" class="file-drop mt-2 p-6 text-center cursor-pointer">
+              <input type="file" name="attachment" id="attachment" class="hidden" style="display:none;" />
+              <svg class="mx-auto mb-2" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5c6884" stroke-width="1.6"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+              <div class="text-xs" style="color:var(--text-mid);">Click to browse or drop a file</div>
+              <div id="file-name" class="mono text-[11px] mt-2" style="color:var(--accent);"></div>
+            </div>
+          </div>
+          <div class="card p-5">
+            <div class="eyebrow mb-3">Preview</div>
+            <div class="mono text-[12px] space-y-2" style="color:var(--text-mid);">
+              <div class="flex justify-between"><span>ID</span><span id="prev-id" style="color:var(--text-hi);">pending</span></div>
+              <div class="flex justify-between"><span>Severity</span><span id="prev-sev" style="color:var(--text-hi);">—</span></div>
+              <div class="flex justify-between"><span>Attack</span><span id="prev-attack" style="color:var(--text-hi);">—</span></div>
+              <div class="flex justify-between"><span>Routed to</span><span id="prev-route" style="color:var(--text-hi);">—</span></div>
+            </div>
+            <div class="divider my-4"></div>
+            <button type="submit" id="submit-btn" class="btn-primary w-full">Submit incident &amp; notify</button>
+            <p class="text-[11px] mt-3" style="color:var(--text-low);">Submitting sends a structured alert email immediately to the recipient above.</p>
+          </div>
+        </div>
+      </form>
+
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="eyebrow">Incidents Covered So Far</div>
+          <span class="text-[12px] mono" style="color:var(--text-low);" id="incidents-count-label">0 total</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Affected Asset</th><th>Recipient</th><th>Email Status</th><th>Logged At</th></tr></thead>
+            <tbody id="incidents-table-body"></tbody>
+          </table>
+        </div>
+        <div id="incidents-empty" class="empty-state hidden">No incidents have been logged yet.</div>
+      </div>
+    </section>
+
+    <!-- ---------------- EMAIL CENTER VIEW ---------------- -->
+    <section class="view" id="view-email-center">
+      <p class="text-sm mb-5" style="color:var(--text-mid);">History of every alert email the portal has attempted to send, including delivery status.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="card stat-card"><div class="stat-label">Emails Sent</div><div class="stat-value" style="color:var(--low);" id="email-sent-count">0</div></div>
+        <div class="card stat-card"><div class="stat-label">Emails Failed</div><div class="stat-value" style="color:var(--crit);" id="email-failed-count">0</div></div>
+        <div class="card stat-card"><div class="stat-label">Success Rate</div><div class="stat-value" style="color:var(--accent);" id="email-success-rate">100%</div></div>
+      </div>
+
+      <div class="card p-5">
+        <div class="eyebrow mb-3">Email History</div>
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead><tr><th>Incident ID</th><th>Subject</th><th>Recipient</th><th>Role</th><th>Severity</th><th>Status</th><th>Sent At</th></tr></thead>
+            <tbody id="emails-table-body"></tbody>
+          </table>
+        </div>
+        <div id="emails-empty" class="empty-state hidden">No emails have been dispatched yet — submit an incident to see history here.</div>
+      </div>
+    </section>
+
+    <!-- ---------------- REPORTS VIEW ---------------- -->
+    <section class="view" id="view-reports">
+      <p class="text-sm mb-5" style="color:var(--text-mid);">Summary of incident activity, exportable as a CSV for offline review.</p>
+      <div class="card p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="eyebrow">Summary</div>
+          <button class="btn-ghost" onclick="exportCsv()">⬇ Export incidents (CSV)</button>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-[13px]" id="reports-summary">
+        </div>
+      </div>
+      <div class="card p-5">
+        <div class="eyebrow mb-3">By Attack Type</div>
+        <div id="reports-attack-breakdown" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- AUDIT LOGS VIEW ---------------- -->
+    <section class="view" id="view-audit-logs">
+      <p class="text-sm mb-5" style="color:var(--text-mid);">Chronological event trail combining incident submissions and email dispatch attempts.</p>
+      <div class="card p-5">
+        <div class="eyebrow mb-4">Event Trail</div>
+        <div id="audit-list" class="space-y-4"></div>
+        <div id="audit-empty" class="empty-state hidden">No activity recorded yet.</div>
+      </div>
+    </section>
+
+    <!-- ---------------- SETTINGS VIEW ---------------- -->
+    <section class="view" id="view-settings">
+      <p class="text-sm mb-5" style="color:var(--text-mid);">Read-only view of the SMTP configuration currently loaded from environment variables.</p>
+      <div class="card p-5 max-w-xl">
+        <div class="eyebrow mb-4">SMTP Configuration</div>
+        <div class="space-y-3 text-[13px] mono" id="settings-body">
+          <div class="flex justify-between"><span style="color:var(--text-low);">SMTP Host</span><span id="set-host">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--text-low);">SMTP Port</span><span id="set-port">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--text-low);">TLS Enabled</span><span id="set-tls">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--text-low);">Sender Display Name</span><span id="set-sender">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--text-low);">Credentials Configured</span><span id="set-configured">—</span></div>
+        </div>
+        <div class="divider my-4"></div>
+        <p class="text-[11px]" style="color:var(--text-low);">To change these values, set SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD / SMTP_USE_TLS as environment variables and restart the app. See README.md.</p>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  /* ---------------------------- Navigation ---------------------------- */
+  const TITLES = {
+    dashboard: ["// Overview", "Dashboard"],
+    incidents: ["// Intake", "Incidents"],
+    "email-center": ["// Notifications", "Email Center"],
+    reports: ["// Analytics", "Reports"],
+    "audit-logs": ["// History", "Audit Logs"],
+    settings: ["// Configuration", "Settings"],
+  };
+
+  function navigate(view){
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+    document.getElementById('topbar-eyebrow').textContent = TITLES[view][0];
+    document.getElementById('topbar-title').textContent = TITLES[view][1];
+    if(view === 'dashboard') loadDashboard();
+    if(view === 'incidents') loadIncidentsTable();
+    if(view === 'email-center') loadEmailCenter();
+    if(view === 'reports') loadReports();
+    if(view === 'audit-logs') loadAuditLogs();
+    if(view === 'settings') loadSettings();
+  }
+  document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => navigate(n.dataset.view)));
+
+  /* ---------------------------- Clock ---------------------------- */
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', {hour12:false});
+    document.getElementById('clock-date').textContent = now.toLocaleDateString('en-US', {day:'2-digit', month:'short', year:'numeric'});
+  }
+  tickClock(); setInterval(tickClock, 1000);
+
+  /* ---------------------------- Severity helpers ---------------------------- */
+  const SEV_ORDER = ['critical','high','medium','low'];
+  function sevBadge(sev){ return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`; }
+  function statusBadge(status){ return `<span class="badge badge-${status === 'sent' ? 'sent' : 'failed'}">${status.toUpperCase()}</span>`; }
+  function fmtDate(iso){
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+  }
+  function titleCase(s){ return s.replace(/_/g,' ').replace(/\w\S*/g, t => t[0].toUpperCase()+t.slice(1)); }
+
+  /* ---------------------------- Incident form ---------------------------- */
+  const tsInput = document.getElementById('timestamp');
+  function resetTimestamp(){
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    tsInput.value = now.toISOString().slice(0,16);
+  }
+  resetTimestamp();
+
+  function selectSeverity(level){
+    document.getElementById('severity-input').value = level;
+    document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low'));
+    document.querySelector(`.sev-btn[data-sev="${level}"]`).classList.add('active-' + level);
+    document.getElementById('prev-sev').textContent = level.toUpperCase();
+  }
+
+  const form = document.getElementById('incident-form');
+  form.attack_type.addEventListener('change', e => {
+    document.getElementById('prev-attack').textContent = e.target.options[e.target.selectedIndex].text || '—';
+  });
+  form.recipient_email.addEventListener('input', e => {
+    document.getElementById('prev-route').textContent = e.target.value || '—';
+  });
+
+  function toggleIncidentForm(){
+    const btn = document.getElementById('toggle-form-btn');
+    const visible = form.style.display !== 'none';
+    form.style.display = visible ? 'none' : 'grid';
+    btn.textContent = visible ? '+ New incident' : '− Hide form';
+  }
+
+  const dropZone = document.getElementById('file-drop');
+  const fileInput = document.getElementById('attachment');
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    document.getElementById('file-name').textContent = fileInput.files[0] ? fileInput.files[0].name : '';
+  });
+  ['dragover','dragenter'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('drag'); }));
+  dropZone.addEventListener('drop', e => {
+    if(e.dataTransfer.files.length){
+      fileInput.files = e.dataTransfer.files;
+      document.getElementById('file-name').textContent = e.dataTransfer.files[0].name;
+    }
+  });
+
+  function showToast(message, ok){
+    const toast = document.getElementById('toast');
+    toast.innerHTML = `<div class="text-sm font-semibold" style="color:${ok ? '#34d399' : '#f43f5e'}">${ok ? 'Incident submitted' : 'Submission failed'}</div><div class="text-xs mt-1" style="color:var(--text-mid)">${message}</div>`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 5500);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if(!document.getElementById('severity-input').value){
+      showToast('Please select a severity level.', false);
+      return;
+    }
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    try {
+      const formData = new FormData(form);
+      const res = await fetch('/api/incidents', { method: 'POST', body: formData });
+      const data = await res.json();
+      if(res.ok && data.success){
+        document.getElementById('prev-id').textContent = data.incident_id;
+        showToast(`${data.incident_id} routed to recipient (${data.email_status}).`, true);
+        form.reset();
+        resetTimestamp();
+        document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low'));
+        document.getElementById('file-name').textContent = '';
+        loadIncidentsTable();
+        loadNavBadge();
+      } else {
+        showToast((data.errors || ['Unexpected error.']).join(' '), false);
+      }
+    } catch (err) {
+      showToast('Network error — please try again.', false);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit incident & notify';
+    }
+  });
+
+  /* ---------------------------- Data loaders ---------------------------- */
+  let charts = {};
+
+  async function loadNavBadge(){
+    const res = await fetch('/api/incidents');
+    const data = await res.json();
+    document.getElementById('nav-incident-count').textContent = data.incidents.length;
+  }
+
+  async function loadDashboard(){
+    const res = await fetch('/api/stats');
+    const s = await res.json();
+
+    document.getElementById('stat-total').textContent = s.total_incidents;
+    document.getElementById('stat-critical').textContent = s.severity_counts.critical;
+    document.getElementById('stat-emails').textContent = s.emails_sent + s.emails_failed;
+    document.getElementById('stat-success').textContent = s.success_rate + '%';
+
+    // Severity donut
+    const sevCtx = document.getElementById('chart-severity');
+    if(charts.sev) charts.sev.destroy();
+    charts.sev = new Chart(sevCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Critical','High','Medium','Low'],
+        datasets: [{
+          data: SEV_ORDER.map(k => s.severity_counts[k]),
+          backgroundColor: ['#f43f5e','#fb923c','#facc15','#34d399'],
+          borderColor: '#0d1220', borderWidth: 3,
+        }]
+      },
+      options: { plugins:{ legend:{ position:'bottom', labels:{ color:'#93a0bd', boxWidth:10, font:{size:11} } } }, cutout:'62%', maintainAspectRatio:false }
+    });
+
+    // Attack type bar
+    const attackLabels = Object.keys(s.attack_counts);
+    const attackCtx = document.getElementById('chart-attack');
+    if(charts.attack) charts.attack.destroy();
+    charts.attack = new Chart(attackCtx, {
+      type: 'bar',
+      data: {
+        labels: attackLabels.length ? attackLabels : ['No data'],
+        datasets: [{
+          data: attackLabels.length ? attackLabels.map(l => s.attack_counts[l]) : [0],
+          backgroundColor: '#22d3ee',
+          borderRadius: 5,
+          maxBarThickness: 26,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ ticks:{ color:'#5a6688', stepSize:1 }, grid:{ color:'#1a2338' } },
+          y:{ ticks:{ color:'#93a0bd', font:{size:11} }, grid:{ display:false } }
+        },
+        maintainAspectRatio:false
+      }
+    });
+
+    // Timeline
+    const timelineLabels = s.timeline.map(t => t[0]);
+    const timelineData = s.timeline.map(t => t[1]);
+    const tlCtx = document.getElementById('chart-timeline');
+    if(charts.tl) charts.tl.destroy();
+    charts.tl = new Chart(tlCtx, {
+      type: 'line',
+      data: {
+        labels: timelineLabels.length ? timelineLabels : ['—'],
+        datasets: [{
+          data: timelineData.length ? timelineData : [0],
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.15)',
+          fill: true, tension: .35, pointRadius: 3, pointBackgroundColor:'#6366f1',
+        }]
+      },
+      options: {
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ ticks:{ color:'#5a6688', font:{size:10} }, grid:{ display:false } },
+          y:{ ticks:{ color:'#5a6688', stepSize:1 }, grid:{ color:'#1a2338' } }
+        },
+        maintainAspectRatio:false
+      }
+    });
+
+    // Recent incidents table
+    const tbody = document.getElementById('recent-incidents-body');
+    tbody.innerHTML = '';
+    document.getElementById('dashboard-empty').classList.toggle('hidden', s.recent_incidents.length > 0);
+    s.recent_incidents.forEach(inc => {
+      tbody.innerHTML += `<tr>
+        <td class="mono">${inc.incident_id}</td>
+        <td>${inc.reporter_name}</td>
+        <td>${titleCase(inc.attack_type)}</td>
+        <td>${sevBadge(inc.severity)}</td>
+        <td>${inc.recipient_email}</td>
+        <td>${statusBadge(inc.email_status)}</td>
+      </tr>`;
+    });
+
+    loadNavBadge();
+  }
+
+  async function loadIncidentsTable(){
+    const res = await fetch('/api/incidents');
+    const data = await res.json();
+    const tbody = document.getElementById('incidents-table-body');
+    tbody.innerHTML = '';
+    document.getElementById('incidents-count-label').textContent = `${data.incidents.length} total`;
+    document.getElementById('incidents-empty').classList.toggle('hidden', data.incidents.length > 0);
+    data.incidents.forEach(inc => {
+      tbody.innerHTML += `<tr>
+        <td class="mono">${inc.incident_id}</td>
+        <td>${inc.reporter_name} <span style="color:var(--text-low);">(${titleCase(inc.reporter_role)})</span></td>
+        <td>${titleCase(inc.attack_type)}</td>
+        <td>${sevBadge(inc.severity)}</td>
+        <td>${inc.affected_assets}</td>
+        <td>${inc.recipient_email}<br><span style="color:var(--text-low); font-size:11px;">${titleCase(inc.recipient_role)}</span></td>
+        <td>${statusBadge(inc.email_status)}</td>
+        <td class="mono" style="color:var(--text-low);">${fmtDate(inc.created_at)}</td>
+      </tr>`;
+    });
+    loadNavBadge();
+  }
+
+  async function loadEmailCenter(){
+    const res = await fetch('/api/emails');
+    const data = await res.json();
+    const emails = data.emails;
+    const sent = emails.filter(e => e.status === 'sent').length;
+    const failed = emails.filter(e => e.status === 'failed').length;
+    document.getElementById('email-sent-count').textContent = sent;
+    document.getElementById('email-failed-count').textContent = failed;
+    document.getElementById('email-success-rate').textContent = emails.length ? Math.round((sent/emails.length)*100) + '%' : '100%';
+
+    const tbody = document.getElementById('emails-table-body');
+    tbody.innerHTML = '';
+    document.getElementById('emails-empty').classList.toggle('hidden', emails.length > 0);
+    emails.forEach(e => {
+      tbody.innerHTML += `<tr>
+        <td class="mono">${e.incident_id}</td>
+        <td>${e.subject}</td>
+        <td>${e.recipient_email}</td>
+        <td>${titleCase(e.recipient_role)}</td>
+        <td>${sevBadge(e.severity)}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td class="mono" style="color:var(--text-low);">${fmtDate(e.sent_at)}</td>
+      </tr>`;
+    });
+  }
+
+  async function loadReports(){
+    const [statsRes, incRes] = await Promise.all([fetch('/api/stats'), fetch('/api/incidents')]);
+    const s = await statsRes.json();
+    window.__allIncidents = (await incRes.json()).incidents;
+
+    document.getElementById('reports-summary').innerHTML = `
+      <div><div class="text-[11px]" style="color:var(--text-low);">Total Incidents</div><div class="text-xl font-bold">${s.total_incidents}</div></div>
+      <div><div class="text-[11px]" style="color:var(--text-low);">Critical</div><div class="text-xl font-bold" style="color:var(--crit);">${s.severity_counts.critical}</div></div>
+      <div><div class="text-[11px]" style="color:var(--text-low);">Emails Sent</div><div class="text-xl font-bold" style="color:var(--low);">${s.emails_sent}</div></div>
+      <div><div class="text-[11px]" style="color:var(--text-low);">Emails Failed</div><div class="text-xl font-bold" style="color:var(--crit);">${s.emails_failed}</div></div>
+    `;
+
+    const breakdown = document.getElementById('reports-attack-breakdown');
+    breakdown.innerHTML = '';
+    const entries = Object.entries(s.attack_counts);
+    if(!entries.length){ breakdown.innerHTML = '<div class="empty-state">No incidents to summarize yet.</div>'; return; }
+    const max = Math.max(...entries.map(e => e[1]));
+    entries.forEach(([label, count]) => {
+      const pct = Math.round((count/max)*100);
+      breakdown.innerHTML += `
+        <div>
+          <div class="flex justify-between text-[12px] mb-1"><span>${label}</span><span class="mono" style="color:var(--text-low);">${count}</span></div>
+          <div style="background:var(--bg-2); border-radius:6px; height:7px; overflow:hidden;"><div style="width:${pct}%; height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-2));"></div></div>
+        </div>`;
+    });
+  }
+
+  function exportCsv(){
+    const rows = window.__allIncidents || [];
+    if(!rows.length){ showToast('There are no incidents to export yet.', false); return; }
+    const headers = ['incident_id','reporter_name','reporter_role','company_name','attack_type','severity','affected_assets','recipient_email','recipient_role','email_status','created_at'];
+    const csv = [headers.join(',')].concat(
+      rows.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g,'""')}"`).join(','))
+    ).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'soc_incidents_export.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function loadAuditLogs(){
+    const [incRes, emailRes] = await Promise.all([fetch('/api/incidents'), fetch('/api/emails')]);
+    const incidents = (await incRes.json()).incidents;
+    const emails = (await emailRes.json()).emails;
+
+    const events = [];
+    incidents.forEach(inc => events.push({
+      time: inc.created_at,
+      color: 'var(--accent)',
+      text: `<strong>${inc.incident_id}</strong> was logged by ${inc.reporter_name} (${titleCase(inc.reporter_role)}) — ${titleCase(inc.attack_type)}, ${inc.severity.toUpperCase()} severity.`,
+    }));
+    emails.forEach(e => events.push({
+      time: e.sent_at,
+      color: e.status === 'sent' ? 'var(--low)' : 'var(--crit)',
+      text: `Alert email for <strong>${e.incident_id}</strong> to ${e.recipient_email} — ${e.status === 'sent' ? 'delivered successfully' : 'failed to send'}.`,
+    }));
+    events.sort((a,b) => new Date(b.time) - new Date(a.time));
+
+    const list = document.getElementById('audit-list');
+    list.innerHTML = '';
+    document.getElementById('audit-empty').classList.toggle('hidden', events.length > 0);
+    events.forEach(ev => {
+      list.innerHTML += `
+        <div class="flex gap-3">
+          <div class="timeline-dot" style="background:${ev.color};"></div>
+          <div class="flex-1">
+            <div class="text-[13px]" style="color:var(--text-hi);">${ev.text}</div>
+            <div class="text-[11px] mono mt-0.5" style="color:var(--text-low);">${fmtDate(ev.time)}</div>
+          </div>
+        </div>`;
+    });
+  }
+
+  async function loadSettings(){
+    const res = await fetch('/api/settings');
+    const s = await res.json();
+    document.getElementById('set-host').textContent = s.smtp_host;
+    document.getElementById('set-port').textContent = s.smtp_port;
+    document.getElementById('set-tls').textContent = s.smtp_use_tls ? 'Yes' : 'No';
+    document.getElementById('set-sender').textContent = s.sender_name;
+    document.getElementById('set-configured').innerHTML = s.smtp_configured
+      ? '<span style="color:var(--low);">Yes</span>'
+      : '<span style="color:var(--high);">No — emails will be logged, not sent</span>';
+  }
+
+  /* ---------------------------- Identity / Login ---------------------------- */
+  const IDENTITY_KEY = 'soc_portal_identity';
+
+  function getIdentity(){
+    try {
+      const raw = localStorage.getItem(IDENTITY_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e){ return null; }
+  }
+
+  function initials(name){
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if(!parts.length) return '—';
+    return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+  }
+
+  function updateProfileUI(identity){
+    document.getElementById('profile-initials').textContent = initials(identity.name);
+    document.getElementById('profile-name').textContent = identity.name;
+    document.getElementById('profile-role').textContent = identity.role;
+    // Pre-fill the reporter fields on the incident form as a convenience.
+    if(form.reporter_name) form.reporter_name.value = identity.name;
+    if(form.reporter_role){
+      const roleMap = { 'SOC Analyst': 'soc_analyst', 'User': 'user' };
+      form.reporter_role.value = roleMap[identity.role] || '';
+    }
+  }
+
+  function openLoginModal(prefill){
+    if(prefill){
+      document.getElementById('login-name').value = prefill.name || '';
+      document.getElementById('login-role').value = prefill.role || '';
+    }
+    document.getElementById('login-error').classList.add('hidden');
+    document.getElementById('login-overlay').classList.add('show');
+  }
+
+  function saveIdentity(){
+    const name = document.getElementById('login-name').value.trim();
+    const role = document.getElementById('login-role').value;
+    if(!name || !role){
+      document.getElementById('login-error').classList.remove('hidden');
+      return;
+    }
+    const identity = { name, role };
+    localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+    updateProfileUI(identity);
+    document.getElementById('login-overlay').classList.remove('show');
+  }
+
+  function initIdentity(){
+    const identity = getIdentity();
+    if(identity){
+      updateProfileUI(identity);
+    } else {
+      openLoginModal();
+    }
+    document.getElementById('profile-box').addEventListener('click', () => openLoginModal(getIdentity()));
+  }
+
+
+  loadDashboard();
+  loadNavBadge();
+  initIdentity();
+</script>
+</body>
+</html>
