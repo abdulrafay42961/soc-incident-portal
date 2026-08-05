@@ -3,105 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Security Incident Alert</title>
+<title>SOC Incident Report</title>
 </head>
-<body style="margin:0; padding:0; background-color:#0a0e14; font-family:'Segoe UI', Helvetica, Arial, sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e14; padding:32px 0;">
+<body style="margin:0; padding:0; background-color:#ffffff; font-family:Helvetica, Arial, sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ffffff;">
   <tr>
-    <td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#0f1420; border:1px solid #212a3d; border-radius:10px; overflow:hidden;">
+    <td align="center" style="padding:36px 20px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;">
 
-        <!-- Header -->
+        <!-- Title -->
         <tr>
-          <td style="background-color:#141b2b; padding:20px 28px; border-bottom:1px solid #212a3d;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="font-size:13px; letter-spacing:.08em; color:#22d3ee; font-weight:700; text-transform:uppercase;">
-                  SOC Incident Alert
-                </td>
-                <td align="right">
-                  <span style="display:inline-block; background-color:{{SEVERITY_BG}}; color:{{SEVERITY_COLOR}}; border:1px solid {{SEVERITY_COLOR}}; font-size:12px; font-weight:700; letter-spacing:.05em; padding:4px 12px; border-radius:100px;">
-                    {{SEVERITY_LABEL}}
-                  </span>
-                </td>
-              </tr>
-            </table>
+          <td style="padding-bottom:4px;">
+            <div style="font-size:24px; color:#111111; font-family:Helvetica, Arial, sans-serif;">
+              SOC Incident Report
+            </div>
           </td>
         </tr>
-
-        <!-- Incident ID / title -->
         <tr>
-          <td style="padding:28px 28px 8px 28px;">
-            <div style="font-size:12px; color:#5c6884; font-family:'Courier New', monospace;">INCIDENT ID</div>
-            <div style="font-size:22px; font-weight:800; color:#e7ecf5; font-family:'Courier New', monospace; margin-top:2px;">
-              {{INCIDENT_ID}}
+          <td style="padding-bottom:26px;">
+            <div style="font-size:12px; color:#5a5a5a;">
+              Incident ID: {{INCIDENT_ID}} &nbsp;·&nbsp; Severity: {{SEVERITY_LABEL}}
             </div>
           </td>
         </tr>
 
-        <!-- Summary grid -->
-        <tr>
-          <td style="padding:16px 28px 8px 28px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px; color:#e7ecf5;">
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; color:#9aa7bd; width:38%;">Attack Type</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; font-weight:600;">{{ATTACK_TYPE}}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; color:#9aa7bd;">Timestamp Detected</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; font-weight:600;">{{TIMESTAMP}}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; color:#9aa7bd;">Affected Assets</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; font-weight:600;">{{AFFECTED_ASSETS}}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; color:#9aa7bd;">Reported By</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; font-weight:600;">{{REPORTER_NAME}} ({{REPORTER_ROLE}})</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; color:#9aa7bd;">Company</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; font-weight:600;">{{COMPANY_NAME}}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; border-bottom:1px solid #212a3d; color:#9aa7bd;">Sender Contact</td>
-                <td style="padding:10px 0; border-top:1px solid #212a3d; border-bottom:1px solid #212a3d; font-weight:600;">{{SENDER_EMAIL}}</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+        <!-- Reporter identity — shown first, at the top -->
+        <tr><td style="padding:6px 0; font-size:14px; color:#111111;"><b>Reporter:</b> {{REPORTER_NAME}} ({{REPORTER_ROLE}})</td></tr>
+        <tr><td style="padding:6px 0; font-size:14px; color:#111111;"><b>Company:</b> {{COMPANY_NAME}}</td></tr>
+        <tr><td style="padding:6px 0 22px 0; font-size:14px; color:#111111;"><b>Sender Email:</b> {{SENDER_EMAIL}}</td></tr>
+
+        <!-- Incident details -->
+        <tr><td style="padding:6px 0; font-size:14px; color:#111111;"><b>Incident Type:</b> {{ATTACK_TYPE}}</td></tr>
+        <tr><td style="padding:6px 0; font-size:14px; color:#111111;"><b>Severity:</b> {{SEVERITY_LABEL}}</td></tr>
+        <tr><td style="padding:6px 0; font-size:14px; color:#111111;"><b>Affected Assets:</b> {{AFFECTED_ASSETS}}</td></tr>
+        <tr><td style="padding:6px 0 22px 0; font-size:14px; color:#111111;"><b>Timestamp Detected:</b> {{TIMESTAMP}}</td></tr>
 
         <!-- Description -->
+        <tr><td style="padding:6px 0 6px 0; font-size:14px; color:#111111;"><b>Description:</b></td></tr>
         <tr>
-          <td style="padding:20px 28px 8px 28px;">
-            <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#22d3ee; font-weight:700; margin-bottom:8px;">
-              Description &amp; Containment Actions
-            </div>
-            <div style="font-size:14px; line-height:1.6; color:#e7ecf5; background-color:#141b2b; border:1px solid #212a3d; border-radius:8px; padding:16px;">
-              {{DESCRIPTION}}
-            </div>
+          <td style="padding:0 0 22px 0; font-size:14px; line-height:1.6; color:#111111;">
+            {{DESCRIPTION}}
           </td>
         </tr>
 
-        <!-- Call to action note -->
+        <!-- Routing note -->
         <tr>
-          <td style="padding:20px 28px 4px 28px;">
-            <div style="font-size:13px; line-height:1.6; color:#9aa7bd; background-color:rgba(34,211,238,0.06); border:1px solid #164e5c; border-radius:8px; padding:14px;">
-              This incident was routed to you as <strong style="color:#e7ecf5;">{{RECIPIENT_ROLE}}</strong>.
-              Please acknowledge receipt and coordinate next steps with the SOC team as appropriate for a
-              <strong style="color:{{SEVERITY_COLOR}};">{{SEVERITY_LABEL}}</strong> severity incident.
-            </div>
+          <td style="padding:0 0 26px 0; font-size:13px; line-height:1.6; color:#333333;">
+            This incident was routed to you as <b>{{RECIPIENT_ROLE}}</b>. Please acknowledge receipt
+            and coordinate next steps with the SOC team as appropriate for a <b>{{SEVERITY_LABEL}}</b>
+            severity incident.
           </td>
         </tr>
 
         <!-- Footer -->
         <tr>
-          <td style="padding:24px 28px 28px 28px;">
-            <div style="height:1px; background-color:#212a3d; margin-bottom:16px;"></div>
-            <div style="font-size:11px; color:#5c6884; font-family:'Courier New', monospace;">
-              Generated automatically by the SOC Incident Notification &amp; Alerting Portal on {{GENERATED_AT}}.
-              Do not reply directly to this address unless it matches the sender contact above.
-            </div>
+          <td style="padding-top:18px; border-top:1px solid #e0e0e0; font-size:11px; color:#8a8a8a;">
+            Generated automatically by the SOC Incident Notification &amp; Alerting Portal on {{GENERATED_AT}}.
+            Do not reply directly to this address unless it matches the sender contact above.
           </td>
         </tr>
 
