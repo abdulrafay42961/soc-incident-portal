@@ -91,6 +91,7 @@ ATTACK_TYPES = {
 SEVERITY_LEVELS = {"critical", "high", "medium", "low"}
 REPORTER_ROLES = {"soc_analyst", "user"}
 RECIPIENT_ROLES = {"hr", "team_lead", "ciso"}
+INCIDENT_STATUSES = {"pending", "resolved"}
 
 SEVERITY_META = {
     "critical": {"color": "#dc2626", "bg": "#450a0a", "label": "CRITICAL"},
@@ -189,6 +190,10 @@ def validate_payload(data: dict) -> list:
     if severity not in SEVERITY_LEVELS:
         errors.append("A valid severity level must be selected.")
 
+    status = data.get("status", "").strip().lower()
+    if status not in INCIDENT_STATUSES:
+        errors.append("Incident status must be 'Pending' or 'Resolved'.")
+
     sender_email = data.get("sender_email", "").strip()
     if sender_email and not EMAIL_REGEX.match(sender_email):
         errors.append("Sender email is not a valid email address.")
@@ -226,6 +231,7 @@ def build_email_html(incident: dict) -> str:
         "{{AFFECTED_ASSETS}}": incident["affected_assets"],
         "{{DESCRIPTION}}": incident["description"].replace("\n", "<br>"),
         "{{RECIPIENT_ROLE}}": format_role(incident["recipient_role"]),
+        "{{STATUS}}": incident.get("status", "pending").title(),
         "{{GENERATED_AT}}": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     for placeholder, value in replacements.items():
@@ -274,7 +280,7 @@ def build_incident_pdf(incident: dict) -> bytes:
     attack_type = incident.get("attack_type", "").replace("_", " ").title() or "—"
     reporter_role = format_role(incident.get("reporter_role", ""))
     recipient_role = format_role(incident.get("recipient_role", ""))
-    status = incident.get("email_status", "draft").replace("_", " ").title()
+    status = (incident.get("status", "") or "pending").title()
     generated_at = datetime.now().strftime("%m/%d/%Y, %I:%M:%S %p")
 
     story = [
@@ -396,6 +402,7 @@ def create_incident():
         "recipient_email": data["recipient_email"].strip(),
         "attack_type": data["attack_type"].strip().lower(),
         "severity": data["severity"].strip().lower(),
+        "status": data["status"].strip().lower(),
         "timestamp": data["timestamp"].strip(),
         "affected_assets": data["affected_assets"].strip(),
         "description": data["description"].strip(),
@@ -474,6 +481,7 @@ def preview_incident_pdf():
         "recipient_email": data.get("recipient_email", "").strip(),
         "attack_type": data.get("attack_type", "").strip().lower(),
         "severity": data.get("severity", "").strip().lower(),
+        "status": data.get("status", "").strip().lower(),
         "timestamp": data.get("timestamp", "").strip(),
         "affected_assets": data.get("affected_assets", "").strip(),
         "description": data.get("description", "").strip(),
