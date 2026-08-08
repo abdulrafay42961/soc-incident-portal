@@ -127,6 +127,8 @@
   .sev-btn.active-high{ background:rgba(251,146,60,0.12); border-color:var(--high); color:var(--high); }
   .sev-btn.active-medium{ background:rgba(250,204,21,0.12); border-color:var(--med); color:var(--med); }
   .sev-btn.active-low{ background:rgba(52,211,153,0.12); border-color:var(--low); color:var(--low); }
+  .sev-btn.active-pending{ background:rgba(250,204,21,0.12); border-color:var(--med); color:var(--med); }
+  .sev-btn.active-resolved{ background:rgba(52,211,153,0.12); border-color:var(--low); color:var(--low); }
 
   .btn-primary{ background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#04121a; font-weight:700; border-radius:9px; padding:12px 22px; transition:.15s ease; }
   .btn-primary:hover{ filter:brightness(1.08); box-shadow:0 0 24px rgba(34,211,238,0.3); }
@@ -157,6 +159,8 @@
   .badge-low{ color:var(--low); background:rgba(52,211,153,0.1); border-color:rgba(52,211,153,0.35); }
   .badge-sent{ color:var(--low); background:rgba(52,211,153,0.1); border-color:rgba(52,211,153,0.35); }
   .badge-failed{ color:var(--crit); background:rgba(244,63,94,0.1); border-color:rgba(244,63,94,0.35); }
+  .badge-pending{ color:var(--med); background:rgba(250,204,21,0.1); border-color:rgba(250,204,21,0.35); }
+  .badge-resolved{ color:var(--low); background:rgba(52,211,153,0.1); border-color:rgba(52,211,153,0.35); }
 
   .empty-state{ text-align:center; padding:48px 20px; color:var(--text-mid); }
 
@@ -416,7 +420,16 @@
           <div class="card p-5">
             <div class="eyebrow mb-4">04 · Description &amp; actions</div>
             <label class="field-label">Incident description, containment taken, and recommendations</label>
-            <textarea required name="description" rows="6" class="field mt-2" placeholder="What happened, how it was detected, containment steps already performed, and recommended next actions..."></textarea>
+            <textarea required name="description" rows="3" class="field mt-2" placeholder="What happened, how it was detected, containment steps already performed, and recommended next actions..."></textarea>
+
+            <div class="mt-4">
+              <label class="field-label">Incident status</label>
+              <input type="hidden" name="status" id="status-input" required />
+              <div class="grid grid-cols-2 gap-2 mt-2">
+                <div class="sev-btn" data-status="pending" onclick="selectStatus('pending')">PENDING</div>
+                <div class="sev-btn" data-status="resolved" onclick="selectStatus('resolved')">RESOLVED</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -466,7 +479,7 @@
         </div>
         <div class="overflow-x-auto">
           <table class="data-table">
-            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Affected Asset</th><th>Recipient</th><th>Email Status</th><th>Logged At</th><th>PDF</th></tr></thead>
+            <thead><tr><th>Incident ID</th><th>Reporter</th><th>Attack Type</th><th>Severity</th><th>Status</th><th>Affected Asset</th><th>Recipient</th><th>Email Status</th><th>Logged At</th><th>PDF</th></tr></thead>
             <tbody id="incidents-table-body"></tbody>
           </table>
         </div>
@@ -525,18 +538,15 @@
 
     <!-- ---------------- SETTINGS VIEW ---------------- -->
     <section class="view" id="view-settings">
-      <p class="text-sm mb-5" style="color:var(--text-mid);">Read-only view of the SMTP configuration currently loaded from environment variables.</p>
+      <p class="text-sm mb-5" style="color:var(--text-mid);">Manage your identity — the name and role that appear on incident reports you submit and pre-fill the reporting form.</p>
       <div class="card p-5 max-w-xl">
-        <div class="eyebrow mb-4">SMTP Configuration</div>
-        <div class="space-y-3 text-[13px] mono" id="settings-body">
-          <div class="flex justify-between"><span style="color:var(--text-low);">SMTP Host</span><span id="set-host">—</span></div>
-          <div class="flex justify-between"><span style="color:var(--text-low);">SMTP Port</span><span id="set-port">—</span></div>
-          <div class="flex justify-between"><span style="color:var(--text-low);">TLS Enabled</span><span id="set-tls">—</span></div>
-          <div class="flex justify-between"><span style="color:var(--text-low);">Sender Display Name</span><span id="set-sender">—</span></div>
-          <div class="flex justify-between"><span style="color:var(--text-low);">Credentials Configured</span><span id="set-configured">—</span></div>
+        <div class="eyebrow mb-4">Your Identity</div>
+        <div class="space-y-3 text-[13px] mono">
+          <div class="flex justify-between"><span style="color:var(--text-low);">Name</span><span id="settings-identity-name">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--text-low);">Role</span><span id="settings-identity-role">—</span></div>
         </div>
         <div class="divider my-4"></div>
-        <p class="text-[11px]" style="color:var(--text-low);">To change these values, set SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD / SMTP_USE_TLS as environment variables and restart the app. See README.md.</p>
+        <button type="button" class="btn-primary" onclick="openLoginModal(getIdentity())">Change name / role</button>
       </div>
     </section>
 
@@ -566,7 +576,7 @@
     if(view === 'email-center') loadEmailCenter();
     if(view === 'reports') loadReports();
     if(view === 'audit-logs') loadAuditLogs();
-    if(view === 'settings') loadSettings();
+    if(view === 'settings') loadSettingsIdentity();
   }
   document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => navigate(n.dataset.view)));
 
@@ -582,6 +592,7 @@
   const SEV_ORDER = ['critical','high','medium','low'];
   function sevBadge(sev){ return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`; }
   function statusBadge(status){ return `<span class="badge badge-${status === 'sent' ? 'sent' : 'failed'}">${status.toUpperCase()}</span>`; }
+  function incidentStatusBadge(status){ return `<span class="badge badge-${status}">${(status || '—').toUpperCase()}</span>`; }
   function fmtDate(iso){
     const d = new Date(iso);
     return d.toLocaleString('en-US', {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
@@ -599,9 +610,15 @@
 
   function selectSeverity(level){
     document.getElementById('severity-input').value = level;
-    document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low'));
+    document.querySelectorAll('.sev-btn[data-sev]').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low'));
     document.querySelector(`.sev-btn[data-sev="${level}"]`).classList.add('active-' + level);
     document.getElementById('prev-sev').textContent = level.toUpperCase();
+  }
+
+  function selectStatus(status){
+    document.getElementById('status-input').value = status;
+    document.querySelectorAll('.sev-btn[data-status]').forEach(b => b.classList.remove('active-pending','active-resolved'));
+    document.querySelector(`.sev-btn[data-status="${status}"]`).classList.add('active-' + status);
   }
 
   const form = document.getElementById('incident-form');
@@ -647,6 +664,10 @@
       showToast('Please select a severity level.', false);
       return;
     }
+    if(!document.getElementById('status-input').value){
+      showToast('Please select an incident status (Pending or Resolved).', false);
+      return;
+    }
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
     btn.textContent = 'Submitting…';
@@ -659,7 +680,7 @@
         showToast(`${data.incident_id} routed to recipient (${data.email_status}).`, true);
         form.reset();
         resetTimestamp();
-        document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low'));
+        document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active-critical','active-high','active-medium','active-low','active-pending','active-resolved'));
         document.getElementById('file-name').textContent = '';
         loadIncidentsTable();
         loadNavBadge();
@@ -827,6 +848,7 @@
         <td>${inc.reporter_name} <span style="color:var(--text-low);">(${titleCase(inc.reporter_role)})</span></td>
         <td>${titleCase(inc.attack_type)}</td>
         <td>${sevBadge(inc.severity)}</td>
+        <td>${incidentStatusBadge(inc.status)}</td>
         <td>${inc.affected_assets}</td>
         <td>${inc.recipient_email}<br><span style="color:var(--text-low); font-size:11px;">${titleCase(inc.recipient_role)}</span></td>
         <td>${statusBadge(inc.email_status)}</td>
@@ -937,16 +959,10 @@
     });
   }
 
-  async function loadSettings(){
-    const res = await fetch('/api/settings');
-    const s = await res.json();
-    document.getElementById('set-host').textContent = s.smtp_host;
-    document.getElementById('set-port').textContent = s.smtp_port;
-    document.getElementById('set-tls').textContent = s.smtp_use_tls ? 'Yes' : 'No';
-    document.getElementById('set-sender').textContent = s.sender_name;
-    document.getElementById('set-configured').innerHTML = s.smtp_configured
-      ? '<span style="color:var(--low);">Yes</span>'
-      : '<span style="color:var(--high);">No — emails will be logged, not sent</span>';
+  function loadSettingsIdentity(){
+    const identity = getIdentity();
+    document.getElementById('settings-identity-name').textContent = identity ? identity.name : 'Not set';
+    document.getElementById('settings-identity-role').textContent = identity ? identity.role : 'Not set';
   }
 
   /* ---------------------------- Identity / Login ---------------------------- */
@@ -996,6 +1012,7 @@
     const identity = { name, role };
     localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
     updateProfileUI(identity);
+    if(document.getElementById('settings-identity-name')) loadSettingsIdentity();
     document.getElementById('login-overlay').classList.remove('show');
   }
 
